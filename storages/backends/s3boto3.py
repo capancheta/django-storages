@@ -1,4 +1,3 @@
-import io
 import mimetypes
 import os
 import posixpath
@@ -18,8 +17,8 @@ from django.utils.timezone import is_naive, make_naive
 
 from storages.base import BaseStorage
 from storages.utils import (
-    check_location, get_available_overwrite_name, lookup_env, safe_join,
-    setting, to_bytes,
+    GzipCompressionWrapper, check_location, get_available_overwrite_name,
+    lookup_env, safe_join, setting, to_bytes,
 )
 
 try:
@@ -129,8 +128,8 @@ class S3Boto3StorageFile(File):
         if self._file is None:
             self._file = SpooledTemporaryFile(
                 max_size=self._storage.max_memory_size,
-                suffix=".S3Boto3StorageFile",
-                dir=setting("FILE_UPLOAD_TEMP_DIR")
+                suffix='.S3Boto3StorageFile',
+                dir=setting('FILE_UPLOAD_TEMP_DIR')
             )
             if 'r' in self._mode:
                 self._is_dirty = False
@@ -179,9 +178,6 @@ class S3Boto3StorageFile(File):
         return length
 
     def _flush_write_buffer(self):
-        """
-        Flushes the write buffer.
-        """
         if self._buffer_file_size:
             self._write_counter += 1
             self.file.seek(0)
@@ -202,19 +198,19 @@ class S3Boto3StorageFile(File):
         This behavior is meant to mimic the behavior of Django's builtin FileSystemStorage,
         where files are always created after they are opened in write mode:
 
-            f = storage.open("file.txt", mode="w")
+            f = storage.open('file.txt', mode='w')
             f.close()
         """
-        assert "w" in self._mode
+        assert 'w' in self._mode
         assert self._raw_bytes_written == 0
 
         try:
             # Check if the object exists on the server; if so, don't do anything
             self.obj.load()
         except ClientError as err:
-            if err.response["ResponseMetadata"]["HTTPStatusCode"] == 404:
+            if err.response['ResponseMetadata']['HTTPStatusCode'] == 404:
                 self.obj.put(
-                    Body=b"", **self._storage._get_write_parameters(self.obj.key)
+                    Body=b'', **self._storage._get_write_parameters(self.obj.key)
                 )
             else:
                 raise
@@ -304,37 +300,37 @@ class S3Boto3Storage(BaseStorage):
             )
 
         return {
-            "access_key": setting('AWS_S3_ACCESS_KEY_ID', setting('AWS_ACCESS_KEY_ID')),
-            "secret_key": setting('AWS_S3_SECRET_ACCESS_KEY', setting('AWS_SECRET_ACCESS_KEY')),
-            "session_profile": setting('AWS_S3_SESSION_PROFILE'),
-            "file_overwrite": setting('AWS_S3_FILE_OVERWRITE', True),
-            "object_parameters": setting('AWS_S3_OBJECT_PARAMETERS', {}),
-            "bucket_name": setting('AWS_STORAGE_BUCKET_NAME'),
-            "querystring_auth": setting('AWS_QUERYSTRING_AUTH', True),
-            "querystring_expire": setting('AWS_QUERYSTRING_EXPIRE', 3600),
-            "signature_version": setting('AWS_S3_SIGNATURE_VERSION'),
-            "location": setting('AWS_LOCATION', ''),
-            "custom_domain": setting('AWS_S3_CUSTOM_DOMAIN'),
-            "cloudfront_signer": cloudfront_signer,
-            "addressing_style": setting('AWS_S3_ADDRESSING_STYLE'),
-            "secure_urls": setting('AWS_S3_SECURE_URLS', True),
-            "file_name_charset": setting('AWS_S3_FILE_NAME_CHARSET', 'utf-8'),
-            "gzip": setting('AWS_IS_GZIPPED', False),
-            "gzip_content_types": setting('GZIP_CONTENT_TYPES', (
+            'access_key': setting('AWS_S3_ACCESS_KEY_ID', setting('AWS_ACCESS_KEY_ID')),
+            'secret_key': setting('AWS_S3_SECRET_ACCESS_KEY', setting('AWS_SECRET_ACCESS_KEY')),
+            'session_profile': setting('AWS_S3_SESSION_PROFILE'),
+            'file_overwrite': setting('AWS_S3_FILE_OVERWRITE', True),
+            'object_parameters': setting('AWS_S3_OBJECT_PARAMETERS', {}),
+            'bucket_name': setting('AWS_STORAGE_BUCKET_NAME'),
+            'querystring_auth': setting('AWS_QUERYSTRING_AUTH', True),
+            'querystring_expire': setting('AWS_QUERYSTRING_EXPIRE', 3600),
+            'signature_version': setting('AWS_S3_SIGNATURE_VERSION'),
+            'location': setting('AWS_LOCATION', ''),
+            'custom_domain': setting('AWS_S3_CUSTOM_DOMAIN'),
+            'cloudfront_signer': cloudfront_signer,
+            'addressing_style': setting('AWS_S3_ADDRESSING_STYLE'),
+            'secure_urls': setting('AWS_S3_SECURE_URLS', True),
+            'file_name_charset': setting('AWS_S3_FILE_NAME_CHARSET', 'utf-8'),
+            'gzip': setting('AWS_IS_GZIPPED', False),
+            'gzip_content_types': setting('GZIP_CONTENT_TYPES', (
                 'text/css',
                 'text/javascript',
                 'application/javascript',
                 'application/x-javascript',
                 'image/svg+xml',
             )),
-            "url_protocol": setting('AWS_S3_URL_PROTOCOL', 'http:'),
-            "endpoint_url": setting('AWS_S3_ENDPOINT_URL'),
-            "proxies": setting('AWS_S3_PROXIES'),
-            "region_name": setting('AWS_S3_REGION_NAME'),
-            "use_ssl": setting('AWS_S3_USE_SSL', True),
-            "verify": setting('AWS_S3_VERIFY', None),
-            "max_memory_size": setting('AWS_S3_MAX_MEMORY_SIZE', 0),
-            "default_acl": setting('AWS_DEFAULT_ACL', None),
+            'url_protocol': setting('AWS_S3_URL_PROTOCOL', 'http:'),
+            'endpoint_url': setting('AWS_S3_ENDPOINT_URL'),
+            'proxies': setting('AWS_S3_PROXIES'),
+            'region_name': setting('AWS_S3_REGION_NAME'),
+            'use_ssl': setting('AWS_S3_USE_SSL', True),
+            'verify': setting('AWS_S3_VERIFY', None),
+            'max_memory_size': setting('AWS_S3_MAX_MEMORY_SIZE', 0),
+            'default_acl': setting('AWS_DEFAULT_ACL', None),
         }
 
     def __getstate__(self):
@@ -430,23 +426,11 @@ class S3Boto3Storage(BaseStorage):
         try:
             return safe_join(self.location, name)
         except ValueError:
-            raise SuspiciousOperation("Attempted access to '%s' denied." %
-                                      name)
+            raise SuspiciousOperation("Attempted access to '%s' denied." % name)
 
     def _compress_content(self, content):
         """Gzip a given string content."""
-        zbuf = io.BytesIO()
-        #  The GZIP header has a modification time attribute (see http://www.zlib.org/rfc-gzip.html)
-        #  This means each time a file is compressed it changes even if the other contents don't change
-        #  For S3 this defeats detection of changes using MD5 sums on gzipped files
-        #  Fixing the mtime at 0.0 at compression time avoids this problem
-        with GzipFile(mode='wb', fileobj=zbuf, mtime=0.0) as zfile:
-            zfile.write(to_bytes(content.read()))
-        zbuf.seek(0)
-        # Boto 2 returned the InMemoryUploadedFile with the file pointer replaced,
-        # but Boto 3 seems to have issues with that. No need for fp.name in Boto3
-        # so just returning the BytesIO directly
-        return zbuf
+        return GzipCompressionWrapper(content)
 
     def _open(self, name, mode='rb'):
         name = self._normalize_name(self._clean_name(name))
@@ -463,7 +447,7 @@ class S3Boto3Storage(BaseStorage):
         name = self._normalize_name(cleaned_name)
         params = self._get_write_parameters(name, content)
 
-        if content.seekable():
+        if not hasattr(content, 'seekable') or content.seekable():
             content.seek(0, os.SEEK_SET)
         if (self.gzip and
                 params['ContentType'] in self.gzip_content_types and
@@ -484,13 +468,16 @@ class S3Boto3Storage(BaseStorage):
         try:
             self.connection.meta.client.head_object(Bucket=self.bucket_name, Key=name)
             return True
-        except ClientError:
-            return False
+        except ClientError as error:
+            if error.response['ResponseMetadata']['HTTPStatusCode'] == 404:
+                return False
+
+            # Some other error was encountered. Re-raise it.
+            raise
 
     def listdir(self, name):
         path = self._normalize_name(self._clean_name(name))
-        # The path needs to end with a slash, but if the root is empty, leave
-        # it.
+        # The path needs to end with a slash, but if the root is empty, leave it.
         if path and not path.endswith('/'):
             path += '/'
 
@@ -578,7 +565,7 @@ class S3Boto3Storage(BaseStorage):
         # Note: Parameters that did not have a value in the original query string will have
         # an '=' sign appended to it, e.g ?foo&bar becomes ?foo=&bar=
         joined_qs = ('='.join(keyval) for keyval in filtered_qs)
-        split_url = split_url._replace(query="&".join(joined_qs))
+        split_url = split_url._replace(query='&'.join(joined_qs))
         return split_url.geturl()
 
     def url(self, name, parameters=None, expire=None, http_method=None):
@@ -589,16 +576,15 @@ class S3Boto3Storage(BaseStorage):
             expire = self.querystring_expire
 
         if self.custom_domain:
-            url = "{}//{}/{}{}".format(
+            url = '{}//{}/{}{}'.format(
                 self.url_protocol,
                 self.custom_domain,
                 filepath_to_uri(name),
-                "?{}".format(urlencode(params)) if params else "",
+                '?{}'.format(urlencode(params)) if params else '',
             )
 
             if self.querystring_auth and self.cloudfront_signer:
                 expiration = datetime.utcnow() + timedelta(seconds=expire)
-
                 return self.cloudfront_signer.generate_presigned_url(url, date_less_than=expiration)
 
             return url

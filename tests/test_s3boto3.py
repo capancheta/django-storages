@@ -16,10 +16,9 @@ from django.utils.timezone import is_aware, utc
 from storages.backends import s3boto3
 
 
-class S3Boto3TestCase(TestCase):
-    def setUp(self):
-        self.storage = s3boto3.S3Boto3Storage()
-        self.storage._connections.connection = mock.MagicMock()
+class S3ManifestStaticStorageTestStorage(s3boto3.S3ManifestStaticStorage):
+    def read_manifest(self):
+        return None
 
 
 class NonSeekableContentFile(ContentFile):
@@ -34,7 +33,10 @@ class NonSeekableContentFile(ContentFile):
         raise AttributeError()
 
 
-class S3Boto3StorageTests(S3Boto3TestCase):
+class S3Boto3StorageTests(TestCase):
+    def setUp(self):
+        self.storage = s3boto3.S3Boto3Storage()
+        self.storage._connections.connection = mock.MagicMock()
 
     def test_clean_name(self):
         """
@@ -486,14 +488,24 @@ class S3Boto3StorageTests(S3Boto3TestCase):
 
     def test_storage_exists_false(self):
         self.storage.connection.meta.client.head_object.side_effect = ClientError(
-            {'Error': {'Code': '404', 'Message': 'Not Found'}},
+            {'Error': {}, 'ResponseMetadata': {'HTTPStatusCode': 404}},
             'HeadObject',
         )
-        self.assertFalse(self.storage.exists("file.txt"))
+        self.assertFalse(self.storage.exists('file.txt'))
         self.storage.connection.meta.client.head_object.assert_called_with(
             Bucket=self.storage.bucket_name,
             Key='file.txt',
         )
+
+    def test_storage_exists_other_error_reraise(self):
+        self.storage.connection.meta.client.head_object.side_effect = ClientError(
+            {'Error': {}, 'ResponseMetadata': {'HTTPStatusCode': 403}},
+            'HeadObject',
+        )
+        with self.assertRaises(ClientError) as cm:
+            self.storage.exists('file.txt')
+
+        self.assertEqual(cm.exception.response['ResponseMetadata']['HTTPStatusCode'], 403)
 
     def test_storage_delete(self):
         self.storage.delete("path/to/file.txt")
@@ -764,3 +776,24 @@ class S3Boto3StorageTests(S3Boto3TestCase):
         self.assertEqual(storage.location, 'foo1')
         storage = s3boto3.S3Boto3Storage(location='foo2')
         self.assertEqual(storage.location, 'foo2')
+
+
+class S3StaticStorageTests(TestCase):
+    def setUp(self):
+        self.storage = s3boto3.S3StaticStorage()
+        self.storage._connections.connection = mock.MagicMock()
+
+    def test_querystring_auth(self):
+        self.assertFalse(self.storage.querystring_auth)
+
+
+class S3ManifestStaticStorageTests(TestCase):
+    def setUp(self):
+        self.storage = S3ManifestStaticStorageTestStorage()
+        self.storage._connections.connection = mock.MagicMock()
+
+    def test_querystring_auth(self):
+        self.assertFalse(self.storage.querystring_auth)
+
+    def test_save(self):
+        self.storage.save('x.txt', ContentFile(b'abc'))
