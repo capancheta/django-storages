@@ -4,7 +4,6 @@ import posixpath
 import tempfile
 import threading
 from datetime import datetime, timedelta
-from gzip import GzipFile
 from tempfile import SpooledTemporaryFile
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -16,13 +15,15 @@ from django.utils.encoding import filepath_to_uri
 from django.utils.timezone import is_naive, make_naive
 
 from storages.base import BaseStorage
+from storages.compress import CompressedFileMixin, CompressStorageMixin
 from storages.utils import (
-    GzipCompressionWrapper, check_location, get_available_overwrite_name,
-    lookup_env, safe_join, setting, to_bytes,
+    check_location, get_available_overwrite_name, lookup_env, safe_join,
+    setting, to_bytes,
 )
 
 try:
     import boto3.session
+    from boto3.s3.transfer import TransferConfig
     from botocore.client import Config
     from botocore.exceptions import ClientError
     from botocore.signers import CloudFrontSigner
@@ -79,7 +80,7 @@ else:
 
 
 @deconstructible
-class S3Boto3StorageFile(File):
+class S3Boto3StorageFile(CompressedFileMixin, File):
     """
     The default file object used by the S3Boto3Storage backend.
 
@@ -133,10 +134,10 @@ class S3Boto3StorageFile(File):
             )
             if 'r' in self._mode:
                 self._is_dirty = False
-                self.obj.download_fileobj(self._file)
+                self.obj.download_fileobj(self._file, Config=self._storage._transfer_config)
                 self._file.seek(0)
             if self._storage.gzip and self.obj.content_encoding == 'gzip':
-                self._file = GzipFile(mode=self._mode, fileobj=self._file, mtime=0.0)
+                self._file = self._decompress_file(mode=self._mode, file=self._file)
         return self._file
 
     def _set_file(self, value):
@@ -231,7 +232,7 @@ class S3Boto3StorageFile(File):
 
 
 @deconstructible
-class S3Boto3Storage(BaseStorage):
+class S3Boto3Storage(CompressStorageMixin, BaseStorage):
     """
     Amazon Simple Storage Service using Boto3
 
@@ -272,6 +273,7 @@ class S3Boto3Storage(BaseStorage):
                 signature_version=self.signature_version,
                 proxies=self.proxies,
             )
+        self._transfer_config = TransferConfig(use_threads=self.use_threads)
 
     def get_cloudfront_signer(self, key_id, key):
         return _cloud_front_signer_from_pem(key_id, key)
@@ -331,6 +333,7 @@ class S3Boto3Storage(BaseStorage):
             'verify': setting('AWS_S3_VERIFY', None),
             'max_memory_size': setting('AWS_S3_MAX_MEMORY_SIZE', 0),
             'default_acl': setting('AWS_DEFAULT_ACL', None),
+            'use_threads': setting('AWS_S3_USE_THREADS', True),
         }
 
     def __getstate__(self):
@@ -428,10 +431,6 @@ class S3Boto3Storage(BaseStorage):
         except ValueError:
             raise SuspiciousOperation("Attempted access to '%s' denied." % name)
 
-    def _compress_content(self, content):
-        """Gzip a given string content."""
-        return GzipCompressionWrapper(content)
-
     def _open(self, name, mode='rb'):
         name = self._normalize_name(self._clean_name(name))
         try:
@@ -456,7 +455,7 @@ class S3Boto3Storage(BaseStorage):
             params['ContentEncoding'] = 'gzip'
 
         obj = self.bucket.Object(name)
-        obj.upload_fileobj(content, ExtraArgs=params)
+        obj.upload_fileobj(content, ExtraArgs=params, Config=self._transfer_config)
         return cleaned_name
 
     def delete(self, name):
